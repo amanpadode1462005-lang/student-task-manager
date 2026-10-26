@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{APP_TITLE}}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <header>
+      <p class="eyebrow">Powered by Terraform &middot; Cloudflare Workers &middot; KV</p>
+      <h1>{{APP_TITLE}}</h1>
+      <p class="sub" id="today"></p>
+    </header>
+
+    <section class="stats">
+      <div class="stat"><b id="s-total">0</b><span>Total</span></div>
+      <div class="stat"><b id="s-pending">0</b><span>Pending</span></div>
+      <div class="stat"><b id="s-done">0</b><span>Completed</span></div>
+      <div class="stat prog"><b id="s-pct">0%</b><span>Progress</span><i><u id="bar"></u></i></div>
+    </section>
+
+    <form id="task-form" class="card">
+      <input id="title" placeholder="What needs to be done?" maxlength="120" required autocomplete="off">
+      <select id="priority" aria-label="Priority"><option>High</option><option selected>Medium</option><option>Low</option></select>
+      <select id="status" aria-label="Status"><option selected>Pending</option><option>Completed</option></select>
+      <button type="submit" class="primary">Add task</button>
+    </form>
+
+    <div class="bar">
+      <input id="search" placeholder="Search tasks" autocomplete="off">
+      <div class="chips" id="chips">
+        <button class="chip on" data-f="">All</button>
+        <button class="chip" data-f="Pending">Pending</button>
+        <button class="chip" data-f="Completed">Completed</button>
+      </div>
+      <select id="sort" aria-label="Sort"><option value="id">Newest</option><option value="priority">Priority</option></select>
+    </div>
+
+    <ul id="list" class="list"></ul>
+    <p id="empty" class="empty" hidden>No tasks here yet. Add your first one above.</p>
+  </main>
+  <div id="toast" role="status"></div>
+  <script src="/script.js"></script>
+</body>
+</html>
