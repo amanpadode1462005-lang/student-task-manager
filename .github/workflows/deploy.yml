@@ -1,4 +1,4 @@
-name: Deploy Infrastructure
+name: Terraform CI
 
 on:
   push:
@@ -23,7 +23,5 @@ jobs:
       - run: terraform init
       - run: terraform fmt -check
       - run: terraform validate
-      - run: terraform plan -out=tfplan
-      - name: Apply (main only)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: terraform apply -auto-approve tfplan
+      # Plan only. Apply is run locally because Terraform state is stored locally.
+      - run: terraform plan
