@@ -5,11 +5,21 @@ const SCRIPT_JS = __SCRIPT_JS__;
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json" } });
 
-async function nextId(kv) {
+
+// All tasks live under ONE key, so reads right after writes are consistent.
+// (KV list() is eventually consistent and caused tasks to appear late or be overwritten.)
+async function loadTasks(kv) {
+  let tasks = await kv.get("all_tasks", "json");
+  if (tasks) return tasks;
+  // One-time migration of tasks stored one-key-per-task by the older version.
   const { keys } = await kv.list({ prefix: "T" });
-  const max = keys.reduce((m, k) => Math.max(m, parseInt(k.name.slice(1), 10) || 100), 100);
-  return "T" + (max + 1);
+  tasks = (await Promise.all(keys.map((k) => kv.get(k.name, "json")))).filter(Boolean);
+  if (tasks.length) await kv.put("all_tasks", JSON.stringify(tasks));
+  return tasks;
 }
+const saveTasks = (kv, tasks) => kv.put("all_tasks", JSON.stringify(tasks));
+const nextId = (tasks) =>
+  "T" + (tasks.reduce((m, t) => Math.max(m, parseInt(t.id.slice(1), 10) || 100), 100) + 1);
 
 export default {
   async fetch(request, env) {
@@ -28,43 +38,46 @@ export default {
     if (!m) return json({ error: "Not found" }, 404);
     const id = m[1];
 
+
     try {
+      const kv = env.TASKS_KV;
       if (!id && method === "GET") {
-        const { keys } = await env.TASKS_KV.list({ prefix: "T" });
-        const tasks = (await Promise.all(keys.map((k) => env.TASKS_KV.get(k.name, "json")))).filter(Boolean);
+        const tasks = await loadTasks(kv);
         tasks.sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }));
         return json(tasks);
       }
       if (!id && method === "POST") {
         const body = await request.json();
         if (!body.title || !String(body.title).trim()) return json({ error: "title is required" }, 400);
+        const tasks = await loadTasks(kv);
         const task = {
-          id: await nextId(env.TASKS_KV),
+          id: nextId(tasks),
           title: String(body.title).trim(),
           priority: body.priority || "Medium",
           status: body.status || "Pending",
           createdDate: new Date().toISOString().slice(0, 10),
         };
-        await env.TASKS_KV.put(task.id, JSON.stringify(task));
+        tasks.push(task);
+        await saveTasks(kv, tasks);
         return json(task, 201);
       }
-      if (id && method === "GET") {
-        const task = await env.TASKS_KV.get(id, "json");
-        return task ? json(task) : json({ error: "Task not found" }, 404);
-      }
-      if (id && method === "PUT") {
-        const task = await env.TASKS_KV.get(id, "json");
-        if (!task) return json({ error: "Task not found" }, 404);
-        const body = await request.json();
-        const updated = { ...task, title: body.title ?? task.title, priority: body.priority ?? task.priority, status: body.status ?? task.status };
-        await env.TASKS_KV.put(id, JSON.stringify(updated));
-        return json(updated);
-      }
-      if (id && method === "DELETE") {
-        const task = await env.TASKS_KV.get(id, "json");
-        if (!task) return json({ error: "Task not found" }, 404);
-        await env.TASKS_KV.delete(id);
-        return json({ message: "Task removed successfully", id });
+      if (id) {
+        const tasks = await loadTasks(kv);
+        const i = tasks.findIndex((t) => t.id === id);
+        if (i < 0) return json({ error: "Task not found" }, 404);
+        if (method === "GET") return json(tasks[i]);
+        if (method === "PUT") {
+          const body = await request.json();
+          const t = tasks[i];
+          tasks[i] = { ...t, title: body.title ?? t.title, priority: body.priority ?? t.priority, status: body.status ?? t.status };
+          await saveTasks(kv, tasks);
+          return json(tasks[i]);
+        }
+        if (method === "DELETE") {
+          tasks.splice(i, 1);
+          await saveTasks(kv, tasks);
+          return json({ message: "Task removed successfully", id });
+        }
       }
       return json({ error: "Method not allowed" }, 405);
     } catch (e) {
